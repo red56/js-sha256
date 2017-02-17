@@ -11,12 +11,7 @@
   'use strict';
 
   var root = typeof window === 'object' ? window : {};
-  var NODE_JS = !root.JS_SHA256_NO_NODE_JS && typeof process == 'object' && process.versions && process.versions.node;
-  if (NODE_JS) {
-    root = global;
-  }
   var COMMON_JS = !root.JS_SHA256_NO_COMMON_JS && typeof module === 'object' && module.exports;
-  var AMD = typeof define === 'function' && define.amd;
   var ARRAY_BUFFER = typeof ArrayBuffer !== 'undefined';
   var HEX_CHARS = '0123456789abcdef'.split('');
   var EXTRA = [-2147483648, 8388608, 32768, 128];
@@ -35,48 +30,28 @@
 
   var blocks = [];
 
-  var createOutputMethod = function (outputType, is224) {
+  var createOutputMethod = function (outputType) {
     return function (message) {
-      return new Sha256(is224, true).update(message)[outputType]();
+      return new Sha256(true).update(message)[outputType]();
     };
   };
 
-  var createMethod = function (is224) {
-    var method = createOutputMethod('hex', is224);
-    if (NODE_JS) {
-      method = nodeWrap(method, is224);
-    }
+  var createMethod = function () {
+    var method = createOutputMethod('hex');
     method.create = function () {
-      return new Sha256(is224);
+      return new Sha256();
     };
     method.update = function (message) {
       return method.create().update(message);
     };
     for (var i = 0; i < OUTPUT_TYPES.length; ++i) {
       var type = OUTPUT_TYPES[i];
-      method[type] = createOutputMethod(type, is224);
+      method[type] = createOutputMethod(type);
     }
     return method;
   };
 
-  var nodeWrap = function (method, is224) {
-    var crypto = require('crypto');
-    var Buffer = require('buffer').Buffer;
-    var algorithm = is224 ? 'sha224' : 'sha256';
-    var nodeMethod = function (message) {
-      if (typeof message === 'string') {
-        return crypto.createHash(algorithm).update(message, 'utf8').digest('hex');
-      } else if (ARRAY_BUFFER && message instanceof ArrayBuffer) {
-        message = new Uint8Array(message);
-      } else if (message.length === undefined) {
-        return method(message);
-      }
-      return crypto.createHash(algorithm).update(new Buffer(message)).digest('hex');
-    };
-    return nodeMethod;
-  };
-
-  function Sha256(is224, sharedMemory) {
+  function Sha256(sharedMemory) {
     if (sharedMemory) {
       blocks[0] = blocks[16] = blocks[1] = blocks[2] = blocks[3] =
       blocks[4] = blocks[5] = blocks[6] = blocks[7] =
@@ -87,30 +62,18 @@
       this.blocks = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     }
 
-    if (is224) {
-      this.h0 = 0xc1059ed8;
-      this.h1 = 0x367cd507;
-      this.h2 = 0x3070dd17;
-      this.h3 = 0xf70e5939;
-      this.h4 = 0xffc00b31;
-      this.h5 = 0x68581511;
-      this.h6 = 0x64f98fa7;
-      this.h7 = 0xbefa4fa4;
-    } else { // 256
-      this.h0 = 0x6a09e667;
-      this.h1 = 0xbb67ae85;
-      this.h2 = 0x3c6ef372;
-      this.h3 = 0xa54ff53a;
-      this.h4 = 0x510e527f;
-      this.h5 = 0x9b05688c;
-      this.h6 = 0x1f83d9ab;
-      this.h7 = 0x5be0cd19;
-    }
+    this.h0 = 0x6a09e667;
+    this.h1 = 0xbb67ae85;
+    this.h2 = 0x3c6ef372;
+    this.h3 = 0xa54ff53a;
+    this.h4 = 0x510e527f;
+    this.h5 = 0x9b05688c;
+    this.h6 = 0x1f83d9ab;
+    this.h7 = 0x5be0cd19;
 
     this.block = this.start = this.bytes = 0;
     this.finalized = this.hashed = false;
     this.first = true;
-    this.is224 = is224;
   }
 
   Sha256.prototype.update = function (message) {
@@ -212,17 +175,10 @@
     bc = b & c;
     for (j = 0; j < 64; j += 4) {
       if (this.first) {
-        if (this.is224) {
-          ab = 300032;
-          t1 = blocks[0] - 1413257819;
-          h = t1 - 150054599 << 0;
-          d = t1 + 24177077 << 0;
-        } else {
-          ab = 704751109;
-          t1 = blocks[0] - 210244248;
-          h = t1 - 1521486534 << 0;
-          d = t1 + 143694565 << 0;
-        }
+        ab = 704751109;
+        t1 = blocks[0] - 210244248;
+        h = t1 - 1521486534 << 0;
+        d = t1 + 143694565 << 0;
         this.first = false;
       } else {
         s0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
@@ -308,12 +264,10 @@
       HEX_CHARS[(h6 >> 20) & 0x0F] + HEX_CHARS[(h6 >> 16) & 0x0F] +
       HEX_CHARS[(h6 >> 12) & 0x0F] + HEX_CHARS[(h6 >> 8) & 0x0F] +
       HEX_CHARS[(h6 >> 4) & 0x0F] + HEX_CHARS[h6 & 0x0F];
-    if (!this.is224) {
       hex += HEX_CHARS[(h7 >> 28) & 0x0F] + HEX_CHARS[(h7 >> 24) & 0x0F] +
-        HEX_CHARS[(h7 >> 20) & 0x0F] + HEX_CHARS[(h7 >> 16) & 0x0F] +
-        HEX_CHARS[(h7 >> 12) & 0x0F] + HEX_CHARS[(h7 >> 8) & 0x0F] +
-        HEX_CHARS[(h7 >> 4) & 0x0F] + HEX_CHARS[h7 & 0x0F];
-    }
+      HEX_CHARS[(h7 >> 20) & 0x0F] + HEX_CHARS[(h7 >> 16) & 0x0F] +
+      HEX_CHARS[(h7 >> 12) & 0x0F] + HEX_CHARS[(h7 >> 8) & 0x0F] +
+      HEX_CHARS[(h7 >> 4) & 0x0F] + HEX_CHARS[h7 & 0x0F];
     return hex;
   };
 
@@ -334,9 +288,7 @@
       (h5 >> 24) & 0xFF, (h5 >> 16) & 0xFF, (h5 >> 8) & 0xFF, h5 & 0xFF,
       (h6 >> 24) & 0xFF, (h6 >> 16) & 0xFF, (h6 >> 8) & 0xFF, h6 & 0xFF
     ];
-    if (!this.is224) {
-      arr.push((h7 >> 24) & 0xFF, (h7 >> 16) & 0xFF, (h7 >> 8) & 0xFF, h7 & 0xFF);
-    }
+    arr.push((h7 >> 24) & 0xFF, (h7 >> 16) & 0xFF, (h7 >> 8) & 0xFF, h7 & 0xFF);
     return arr;
   };
 
@@ -345,7 +297,7 @@
   Sha256.prototype.arrayBuffer = function () {
     this.finalize();
 
-    var buffer = new ArrayBuffer(this.is224 ? 28 : 32);
+    var buffer = new ArrayBuffer(32);
     var dataView = new DataView(buffer);
     dataView.setUint32(0, this.h0);
     dataView.setUint32(4, this.h1);
@@ -354,25 +306,16 @@
     dataView.setUint32(16, this.h4);
     dataView.setUint32(20, this.h5);
     dataView.setUint32(24, this.h6);
-    if (!this.is224) {
-      dataView.setUint32(28, this.h7);
-    }
+    dataView.setUint32(28, this.h7);
     return buffer;
   };
 
   var exports = createMethod();
   exports.sha256 = exports;
-  exports.sha224 = createMethod(true);
 
   if (COMMON_JS) {
     module.exports = exports;
   } else {
     root.sha256 = exports.sha256;
-    root.sha224 = exports.sha224;
-    if (AMD) {
-      define(function () {
-        return exports;
-      });
-    }
   }
 })();
